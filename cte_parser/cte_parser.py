@@ -57,23 +57,45 @@ class CTEParser:
         Returns:
             CTE表名列表（保持出现顺序）
         """
-        # 移除注释
         clean_sql = self.remove_comments(sql)
-        
         cte_names = []
         
-        # 查找所有WITH语句块
-        with_matches = self.cte_pattern.finditer(clean_sql)
+        with_pattern = re.compile(r'\bWITH\s+(?:RECURSIVE\s+)?', re.IGNORECASE)
         
-        for with_match in with_matches:
-            cte_block = with_match.group(1)
+        for with_match in with_pattern.finditer(clean_sql):
+            pos = with_match.end()
             
-            # 在CTE块中查找所有表名
-            name_matches = self.single_cte_pattern.finditer(cte_block)
-            
-            for name_match in name_matches:
-                table_name = name_match.group(1)
-                cte_names.append(table_name)
+            while pos < len(clean_sql):
+                while pos < len(clean_sql) and clean_sql[pos].isspace():
+                    pos += 1
+                
+                if pos >= len(clean_sql):
+                    break
+                
+                name_match = re.match(r'([a-zA-Z_][a-zA-Z0-9_]*)\s+AS\s*\(', 
+                                    clean_sql[pos:], re.IGNORECASE)
+                
+                if not name_match:
+                    break
+                
+                cte_names.append(name_match.group(1))
+                pos += name_match.end()
+                
+                paren_count = 1
+                while pos < len(clean_sql) and paren_count > 0:
+                    if clean_sql[pos] == '(':
+                        paren_count += 1
+                    elif clean_sql[pos] == ')':
+                        paren_count -= 1
+                    pos += 1
+                
+                while pos < len(clean_sql) and clean_sql[pos].isspace():
+                    pos += 1
+                
+                if pos < len(clean_sql) and clean_sql[pos] == ',':
+                    pos += 1
+                else:
+                    break
         
         return cte_names
     
@@ -188,7 +210,7 @@ def main():
     print("示例2：解析SQL文件")
     print("=" * 60)
     
-    sql_file = "sample.sql"
+    sql_file = "./cte_parser/sample.sql"
     
     try:
         file_result = parser.parse_file(sql_file)
