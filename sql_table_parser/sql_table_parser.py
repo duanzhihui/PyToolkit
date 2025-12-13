@@ -20,6 +20,12 @@ class SQLTableParser:
         # 表名模式：支持 table, schema.table, `table`, "table" 等格式
         self.table_pattern = r'(?:`[^`]+`|"[^"]+"|[\w]+\.[\w]+|[\w]+)'
         
+        # 匹配单个CTE名称的正则表达式 (参考 cte_parser.py)
+        self.single_cte_pattern = re.compile(
+            r'([a-zA-Z_][a-zA-Z0-9_]*)\s+AS\s*\(',
+            re.IGNORECASE
+        )
+        
         # 各种SQL语句的正则表达式模式
         self.patterns = {
             # SELECT ... FROM table
@@ -194,9 +200,61 @@ class SQLTableParser:
         
         return tables
     
+    def extract_cte_names(self, sql: str) -> Set[str]:
+        """
+        从SQL代码中提取所有CTE临时表名 (参考 cte_parser.py)
+        
+        Args:
+            sql: SQL代码字符串
+            
+        Returns:
+            CTE表名集合
+        """
+        cte_names = set()
+        
+        with_pattern = re.compile(r'\bWITH\s+(?:RECURSIVE\s+)?', re.IGNORECASE)
+        
+        for with_match in with_pattern.finditer(sql):
+            pos = with_match.end()
+            
+            while pos < len(sql):
+                while pos < len(sql) and sql[pos].isspace():
+                    pos += 1
+                
+                if pos >= len(sql):
+                    break
+                
+                name_match = re.match(r'([a-zA-Z_][a-zA-Z0-9_]*)\s+AS\s*\(', 
+                                    sql[pos:], re.IGNORECASE)
+                
+                if not name_match:
+                    break
+                
+                cte_names.add(name_match.group(1))
+                pos += name_match.end()
+                
+                # 跳过括号内的内容
+                paren_count = 1
+                while pos < len(sql) and paren_count > 0:
+                    if sql[pos] == '(':
+                        paren_count += 1
+                    elif sql[pos] == ')':
+                        paren_count -= 1
+                    pos += 1
+                
+                while pos < len(sql) and sql[pos].isspace():
+                    pos += 1
+                
+                if pos < len(sql) and sql[pos] == ',':
+                    pos += 1
+                else:
+                    break
+        
+        return cte_names
+    
     def parse_sql(self, sql: str) -> Dict[str, Set[str]]:
         """
-        解析SQL代码，提取所有表名
+        解析SQL代码，提取所有表名（剔除CTE临时表）
         
         Args:
             sql: SQL代码
@@ -207,6 +265,9 @@ class SQLTableParser:
         # 移除注释
         sql = self.remove_comments(sql)
         
+        # 提取CTE临时表名
+        cte_names = self.extract_cte_names(sql)
+        
         result = {}
         all_tables = set()
         
@@ -214,11 +275,18 @@ class SQLTableParser:
         for pattern_name, pattern in self.patterns.items():
             tables = self.extract_tables_from_pattern(sql, pattern)
             if tables:
-                result[pattern_name] = tables
-                all_tables.update(tables)
+                # 剔除CTE临时表
+                tables = tables - cte_names
+                if tables:
+                    result[pattern_name] = tables
+                    all_tables.update(tables)
         
         # 添加所有表名的汇总
         result['all_tables'] = all_tables
+        
+        # 添加CTE临时表信息（供参考）
+        if cte_names:
+            result['cte_tables'] = cte_names
         
         return result
     
@@ -277,6 +345,7 @@ class SQLTableParser:
             'alter': 'ALTER TABLE',
             'truncate': 'TRUNCATE TABLE',
             'cte': 'WITH (CTE)',
+            'cte_tables': 'CTE临时表（已剔除）',
         }
         
         for pattern_name, tables in result.items():
@@ -302,10 +371,19 @@ def main():
     print("-" * 60)
     
     sample_sql = """
-    SELECT u.id, u.name, o.order_id
+    WITH customer_summary AS (
+        SELECT customer_id, SUM(amount) as total
+        FROM orders
+        GROUP BY customer_id
+    ),
+    top_customers AS (
+        SELECT customer_id
+        FROM customer_summary
+        WHERE total > 1000
+    )
+    SELECT u.id, u.name, tc.customer_id
     FROM users u
-    INNER JOIN orders o ON u.id = o.user_id
-    WHERE u.status = 'active';
+    INNER JOIN top_customers tc ON u.id = tc.customer_id;
     
     INSERT INTO logs (message, created_at) VALUES ('test', NOW());
     

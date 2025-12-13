@@ -21,7 +21,7 @@
 - ✅ DROP TABLE
 - ✅ ALTER TABLE
 - ✅ TRUNCATE TABLE
-- ✅ WITH (CTE - Common Table Expression)
+- ✅ WITH (CTE - Common Table Expression，CTE 临时表会从最终表名结果中剔除)
 - ✅ 子查询
 - ✅ UNION查询
 
@@ -104,6 +104,9 @@ print(parser.format_result(result))
     'join': {'orders', 'products'},
     'insert': {'logs'},
     'update': {'products'},
+    # CTE 临时表（仅做记录，不会出现在 all_tables 中）
+    'cte_tables': {'sales_summary'},
+    # 汇总的真实表名（不包含 CTE 临时表）
     'all_tables': {'users', 'customers', 'orders', 'products', 'logs'}
 }
 ```
@@ -115,10 +118,11 @@ print(parser.format_result(result))
 SQL表名解析结果
 ============================================================
 
-【所有表名】 (共 20 个)
+【所有表名】 (共 19 个)
   - customers
   - customers_2023
   - customers_2024
+  - db_schema.table_name
   - departments
   - employees
   - error_table
@@ -137,25 +141,51 @@ SQL表名解析结果
 
 【按SQL语句类型分类】
 
-SELECT FROM: 12 个表
+SELECT FROM: 13 个表
   - customers
+  - customers_2023
+  - customers_2024
+  - db_schema.table_name
   - departments
   - employees
   - error_table
+  - performance_reviews
   - products
   - raw_data
   - sales_records
   - temp_data
   - users
 
-JOIN: 8 个表
-  - customers
+JOIN: 3 个表
   - order_details
   - orders
   - products
+
+INSERT INTO: 2 个表
+  - logs
+  - users
+
+UPDATE: 1 个表
+  - products
+
+DELETE FROM: 1 个表
+  - temp_data
+
+CREATE TABLE: 1 个表
+  - user_logs
+
+DROP TABLE: 1 个表
+  - old_backup_table
+
+ALTER TABLE: 1 个表
+  - users
+
+TRUNCATE TABLE: 1 个表
+  - temporary_cache
+
+CTE临时表（已剔除）: 1 个表
   - sales_summary
 
-...
 ============================================================
 ```
 
