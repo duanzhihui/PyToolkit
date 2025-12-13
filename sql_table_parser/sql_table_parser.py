@@ -42,7 +42,7 @@ class SQLTableParser:
             
             # INSERT INTO table
             'insert': re.compile(
-                r'\bINSERT\s+INTO\s+' + self.table_pattern,
+                r'\bINSERT\s+(?:INTO\s+(?:TABLE\s+)?|OVERWRITE\s+TABLE\s+)' + self.table_pattern,
                 re.IGNORECASE
             ),
             
@@ -58,9 +58,51 @@ class SQLTableParser:
                 re.IGNORECASE
             ),
             
-            # CREATE TABLE table
+            # CREATE TABLE table (支持 Hive EXTERNAL TABLE)
             'create': re.compile(
-                r'\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?' + self.table_pattern,
+                r'\bCREATE\s+(?:EXTERNAL\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?' + self.table_pattern,
+                re.IGNORECASE
+            ),
+            
+            # Hive: LOAD DATA [LOCAL] INPATH ... INTO TABLE table
+            'load_data': re.compile(
+                r'\bLOAD\s+DATA\s+(?:LOCAL\s+)?INPATH\s+[^\s]+\s+(?:OVERWRITE\s+)?INTO\s+TABLE\s+' + self.table_pattern,
+                re.IGNORECASE
+            ),
+            
+            # Hive: MSCK REPAIR TABLE table
+            'msck_repair': re.compile(
+                r'\bMSCK\s+(?:REPAIR\s+)?TABLE\s+' + self.table_pattern,
+                re.IGNORECASE
+            ),
+            
+            # Hive: EXPORT TABLE table
+            'export_table': re.compile(
+                r'\bEXPORT\s+TABLE\s+' + self.table_pattern,
+                re.IGNORECASE
+            ),
+            
+            # Hive: IMPORT TABLE table
+            'import_table': re.compile(
+                r'\bIMPORT\s+(?:EXTERNAL\s+)?TABLE\s+' + self.table_pattern,
+                re.IGNORECASE
+            ),
+            
+            # Hive: ANALYZE TABLE table
+            'analyze': re.compile(
+                r'\bANALYZE\s+TABLE\s+' + self.table_pattern,
+                re.IGNORECASE
+            ),
+            
+            # Hive: DESCRIBE [EXTENDED|FORMATTED] table
+            'describe': re.compile(
+                r'\b(?:DESCRIBE|DESC)\s+(?:EXTENDED\s+|FORMATTED\s+)?' + self.table_pattern,
+                re.IGNORECASE
+            ),
+            
+            # Hive: SHOW PARTITIONS table / SHOW CREATE TABLE table
+            'show_table': re.compile(
+                r'\bSHOW\s+(?:PARTITIONS|CREATE\s+TABLE|COLUMNS\s+(?:IN|FROM)|TBLPROPERTIES)\s+' + self.table_pattern,
                 re.IGNORECASE
             ),
             
@@ -99,7 +141,17 @@ class SQLTableParser:
             'LIMIT', 'OFFSET', 'DISTINCT', 'ALL', 'ANY', 'SOME', 'CASE', 'WHEN',
             'THEN', 'ELSE', 'END', 'IF', 'NULL', 'IS', 'TRUE', 'FALSE', 'TRUNCATE',
             'ASC', 'DESC', 'PRIMARY', 'KEY', 'FOREIGN', 'REFERENCES', 'CONSTRAINT',
-            'UNIQUE', 'CHECK', 'DEFAULT', 'AUTO_INCREMENT', 'CASCADE'
+            'UNIQUE', 'CHECK', 'DEFAULT', 'AUTO_INCREMENT', 'CASCADE',
+            # Hive 常见关键字（避免被误识别为表名）
+            'OVERWRITE', 'DIRECTORY', 'PARTITION', 'PARTITIONED', 'CLUSTERED',
+            'DISTRIBUTED', 'SORTED', 'ROW', 'FORMAT', 'DELIMITED', 'FIELDS',
+            'TERMINATED', 'COLLECTION', 'ITEMS', 'MAP', 'STORED', 'TEXTFILE',
+            'SEQUENCEFILE', 'ORC', 'PARQUET', 'RCFILE', 'INPUTFORMAT', 'OUTPUTFORMAT',
+            'EXTERNAL', 'LOCATION', 'TBLPROPERTIES', 'SERDEPROPERTIES', 'SERDE',
+            'LOAD', 'DATA', 'LOCAL', 'INPATH', 'MSCK', 'REPAIR', 'EXPORT', 'IMPORT',
+            'ANALYZE', 'COMPUTE', 'STATISTICS', 'DESCRIBE', 'DESC', 'EXTENDED',
+            'FORMATTED', 'SHOW', 'PARTITIONS', 'COLUMNS', 'LATERAL', 'EXPLODE',
+            'POSEXPLODE', 'INLINE', 'STACK', 'BUCKETS', 'SKEWED'
         }
     
     def clean_table_name(self, table_name: str) -> str:
@@ -380,7 +432,7 @@ class SQLTableParser:
         type_names = {
             'select_from': 'SELECT FROM',
             'join': 'JOIN',
-            'insert': 'INSERT INTO',
+            'insert': 'INSERT INTO/OVERWRITE',
             'update': 'UPDATE',
             'delete': 'DELETE FROM',
             'create': 'CREATE TABLE',
@@ -389,6 +441,14 @@ class SQLTableParser:
             'truncate': 'TRUNCATE TABLE',
             'cte': 'WITH (CTE)',
             'cte_tables': 'CTE临时表（已剔除）',
+            # Hive 特有语句类型
+            'load_data': 'LOAD DATA (Hive)',
+            'msck_repair': 'MSCK REPAIR TABLE (Hive)',
+            'export_table': 'EXPORT TABLE (Hive)',
+            'import_table': 'IMPORT TABLE (Hive)',
+            'analyze': 'ANALYZE TABLE (Hive)',
+            'describe': 'DESCRIBE (Hive)',
+            'show_table': 'SHOW (Hive)',
         }
         
         for pattern_name, tables in result.items():

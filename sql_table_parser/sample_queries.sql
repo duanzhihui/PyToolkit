@@ -88,3 +88,57 @@ ALTER TABLE users ADD COLUMN phone VARCHAR(20);
 
 -- FROM子句中的子查询
 SELECT * FROM (SELECT * FROM raw_data WHERE valid = 1) AS filtered_data;
+
+-- ============================================================
+-- Hive SQL 语法示例
+-- ============================================================
+
+-- Hive: INSERT OVERWRITE TABLE
+INSERT OVERWRITE TABLE ods_user PARTITION(dt='2024-01-01')
+SELECT * FROM src_user WHERE dt='2024-01-01';
+
+-- Hive: INSERT INTO TABLE
+INSERT INTO TABLE dwd_order
+SELECT order_id, user_id, amount FROM ods_order;
+
+-- Hive: CREATE EXTERNAL TABLE
+CREATE EXTERNAL TABLE IF NOT EXISTS ext_log_data (
+    log_id STRING,
+    log_time TIMESTAMP,
+    message STRING
+)
+PARTITIONED BY (dt STRING)
+STORED AS PARQUET
+LOCATION '/data/logs/';
+
+-- Hive: LOAD DATA
+LOAD DATA INPATH '/tmp/data.csv' INTO TABLE staging_table;
+LOAD DATA LOCAL INPATH '/home/user/data.txt' OVERWRITE INTO TABLE local_import_table;
+
+-- Hive: MSCK REPAIR TABLE
+MSCK REPAIR TABLE partitioned_events;
+
+-- Hive: ANALYZE TABLE
+ANALYZE TABLE fact_sales COMPUTE STATISTICS;
+
+-- Hive: DESCRIBE
+DESCRIBE FORMATTED dim_product;
+DESC EXTENDED dim_customer;
+
+-- Hive: SHOW commands
+SHOW PARTITIONS event_logs;
+SHOW CREATE TABLE config_table;
+SHOW COLUMNS FROM metadata_table;
+
+-- Hive: EXPORT/IMPORT TABLE
+EXPORT TABLE backup_source TO '/backup/2024/';
+IMPORT TABLE restored_table FROM '/backup/2024/';
+
+-- Hive: 复杂查询示例 (WITH + INSERT OVERWRITE)
+WITH daily_agg AS (
+    SELECT user_id, COUNT(*) as cnt
+    FROM user_actions
+    GROUP BY user_id
+)
+INSERT OVERWRITE TABLE user_daily_stats PARTITION(dt='2024-01-01')
+SELECT user_id, cnt FROM daily_agg;
