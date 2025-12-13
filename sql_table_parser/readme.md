@@ -2,12 +2,14 @@
 
 ## 功能介绍
 
-这是一个使用正则表达式从SQL代码中提取所有表名的Python程序。支持多种SQL语句类型。
+这是一个使用正则表达式从SQL代码中提取所有表名的Python程序，可以解析**SQL字符串**以及**SQL文件 / 含有 SQL 语句的脚本文件**（`.sql` / `.py` / `.sh`），支持多种SQL语句类型，并自动移除注释和常见的非SQL代码片段。
 
 ## 文件说明
 
-- **sql_table_parser.py** - 主程序，包含SQLTableParser类
+- **sql_table_parser.py** - 主程序，包含 `SQLTableParser` 类和 `main` 演示入口
 - **sample_queries.sql** - 示例SQL文件，包含各种SQL语句
+- **sample_script.py** - 示例Python脚本，演示从脚本中提取SQL表名
+- **sample_script.sh** - 示例Shell脚本，演示从脚本中提取SQL表名
 - **parse_result.txt** - 解析结果输出文件（运行后生成）
 
 ## 支持的SQL语句类型
@@ -76,12 +78,30 @@ from sql_table_parser import SQLTableParser
 
 parser = SQLTableParser()
 
-# 解析文件
+# 解析 .sql 文件
 result = parser.parse_file("your_sql_file.sql")
 
 # 查看结果
 print(parser.format_result(result))
 ```
+
+### 方法4：解析包含 SQL 的脚本文件（.py / .sh）
+
+```python
+from sql_table_parser import SQLTableParser
+
+parser = SQLTableParser()
+
+# 解析包含 SQL 语句的 Python 脚本
+result_py = parser.parse_file("sample_script.py")
+print(parser.format_result(result_py))
+
+# 解析包含 SQL 语句的 Shell 脚本
+result_sh = parser.parse_file("sample_script.sh")
+print(parser.format_result(result_sh))
+```
+
+> 提示：对 `.py` 和 `.sh` 文件，解析前会自动调用 `remove_non_sql_code` 预处理，移除 `import` / shebang / Shell 注释等非 SQL 代码，只保留真正的 SQL 片段再做解析。
 
 ## 核心类和方法
 
@@ -89,12 +109,29 @@ print(parser.format_result(result))
 
 #### 主要方法
 
-- **`parse_sql(sql: str)`** - 解析SQL字符串，返回表名字典
-- **`parse_file(file_path: str)`** - 解析SQL文件，返回表名字典
+- **`parse_sql(sql: str, preprocess: bool = True)`**  
+  解析SQL字符串，返回表名字典。默认会根据需要进行预处理：
+  - `preprocess=True` 时，会调用 `remove_non_sql_code` 移除常见非SQL代码（适合直接传入脚本内容）。
+  - 如果你确认传入的字符串是「纯 SQL」，可以设置 `preprocess=False`，略过额外处理。
+
+- **`parse_file(file_path: str)`**  
+  解析SQL或脚本文件，返回表名字典：
+  - 支持扩展名：`.sql` / `.py` / `.sh`
+  - 对 `.py` 和 `.sh` 文件会自动进行非SQL代码预处理
+
 - **`format_result(result: dict)`** - 格式化解析结果为可读字符串
+
 - **`clean_table_name(table_name: str)`** - 清理表名（去除引号等）
-- **`is_valid_table_name(table_name: str)`** - 验证表名是否有效
-- **`remove_comments(sql: str)`** - 移除SQL注释
+
+- **`is_valid_table_name(table_name: str)`** - 验证表名是否有效（过滤关键字、非法标识符等）
+
+- **`remove_comments(sql: str)`** - 移除SQL注释（支持 `--` 单行注释和 `/* ... */` 多行注释）
+
+- **`remove_non_sql_code(content: str)`** - 移除常见非SQL代码（例如 Python 的 `import` / `from ... import ...`、脚本 shebang、`#` 行注释等），为混合脚本场景提取 SQL 做准备
+
+- **`extract_cte_names(sql: str)`** - 从 SQL 中提取所有 CTE 临时表名（`WITH xxx AS (...)`）
+
+- **`extract_tables_from_pattern(sql: str, pattern: Pattern)`** - 使用指定正则表达式模式从 SQL 中提取表名，是各类语句解析的底层工具方法
 
 #### 返回结果格式
 

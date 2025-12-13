@@ -169,6 +169,35 @@ class SQLTableParser:
         
         return sql
     
+    def remove_non_sql_code(self, content: str) -> str:
+        """
+        移除非SQL代码（如Python import语句、shell命令等）
+        
+        Args:
+            content: 文件内容
+            
+        Returns:
+            移除非SQL代码后的内容
+        """
+        # 移除Python的import语句: import xxx 或 from xxx import yyy
+        content = re.sub(r'^\s*import\s+[^\n]+', '', content, flags=re.MULTILINE)
+        content = re.sub(r'^\s*from\s+[a-zA-Z_][a-zA-Z0-9_.]*\s+import\s+[^\n]+', '', content, flags=re.MULTILINE)
+        
+        # 移除Python的shebang和编码声明
+        content = re.sub(r'^#!.*python[^\n]*', '', content, flags=re.MULTILINE)
+        content = re.sub(r'^#.*coding[=:]\s*[^\n]+', '', content, flags=re.MULTILINE)
+        
+        # 移除shell的shebang
+        content = re.sub(r'^#!/bin/(ba)?sh[^\n]*', '', content, flags=re.MULTILINE)
+        content = re.sub(r'^#!/usr/bin/env\s+(ba)?sh[^\n]*', '', content, flags=re.MULTILINE)
+        
+        # 移除shell的纯注释行（不是SQL注释）
+        # 保留 -- 开头的SQL注释，移除 # 开头的shell/python注释
+        content = re.sub(r'^\s*#[^!][^\n]*', '', content, flags=re.MULTILINE)
+        content = re.sub(r'^\s*#$', '', content, flags=re.MULTILINE)
+        
+        return content
+    
     def extract_tables_from_pattern(self, sql: str, pattern: re.Pattern) -> Set[str]:
         """
         使用指定的正则表达式模式提取表名
@@ -252,16 +281,21 @@ class SQLTableParser:
         
         return cte_names
     
-    def parse_sql(self, sql: str) -> Dict[str, Set[str]]:
+    def parse_sql(self, sql: str, preprocess: bool = True) -> Dict[str, Set[str]]:
         """
         解析SQL代码，提取所有表名（剔除CTE临时表）
         
         Args:
             sql: SQL代码
+            preprocess: 是否预处理移除非SQL代码（如Python import）
             
         Returns:
             字典，键为SQL语句类型，值为表名集合
         """
+        # 移除非SQL代码（如Python import语句）
+        if preprocess:
+            sql = self.remove_non_sql_code(sql)
+        
         # 移除注释
         sql = self.remove_comments(sql)
         
@@ -292,10 +326,10 @@ class SQLTableParser:
     
     def parse_file(self, file_path: str) -> Dict[str, Set[str]]:
         """
-        解析SQL文件
+        解析文件中的SQL代码，支持 *.sql, *.py, *.sh 文件
         
         Args:
-            file_path: SQL文件路径
+            file_path: 文件路径（支持 .sql, .py, .sh 扩展名）
             
         Returns:
             字典，键为SQL语句类型，值为表名集合
@@ -305,10 +339,19 @@ class SQLTableParser:
         if not path.exists():
             raise FileNotFoundError(f"文件不存在: {file_path}")
         
-        with open(path, 'r', encoding='utf-8') as f:
-            sql = f.read()
+        # 检查文件扩展名
+        suffix = path.suffix.lower()
+        supported_extensions = {'.sql', '.py', '.sh'}
+        if suffix not in supported_extensions:
+            raise ValueError(f"不支持的文件类型: {suffix}，支持的类型: {supported_extensions}")
         
-        return self.parse_sql(sql)
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 对于 .py 和 .sh 文件，需要预处理移除非SQL代码
+        preprocess = suffix in {'.py', '.sh'}
+        
+        return self.parse_sql(content, preprocess=preprocess)
     
     def format_result(self, result: Dict[str, Set[str]]) -> str:
         """
